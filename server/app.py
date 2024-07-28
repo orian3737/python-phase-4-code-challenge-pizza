@@ -23,113 +23,56 @@ api = Api(app)
 def index():
     return "<h1>Code challenge</h1>"
 
-class RestaurantList(Resource):
+class RestaurantListResource(Resource):
     def get(self):
         restaurants = Restaurant.query.all()
-        return jsonify([restaurant.to_dict() for restaurant in restaurants])
+        return jsonify([restaurant.to_dict(only=('id', 'name', 'address')) for restaurant in restaurants])
 
-    def post(self):
-        data = request.get_json()
-        new_restaurant = Restaurant(name=data['name'], address=data['address'])
-        db.session.add(new_restaurant)
-        db.session.commit()
-        return new_restaurant.to_dict(), 201
-
-class RestaurantById(Resource):
-    def get(self, restaurant_id):
-        restaurant = Restaurant.query.get_or_404(restaurant_id)
+class RestaurantResource(Resource):
+    def get(self, id):
+        restaurant = Restaurant.query.get(id)
+        if restaurant is None:
+            return {'error': 'Restaurant not found'}, 404
         return jsonify(restaurant.to_dict())
 
-    def put(self, restaurant_id):
-        restaurant = Restaurant.query.get_or_404(restaurant_id)
-        data = request.get_json()
-        restaurant.name = data['name']
-        restaurant.address = data['address']
-        db.session.commit()
-        return restaurant.to_dict()
-
-    def delete(self, restaurant_id):
-        restaurant = Restaurant.query.get_or_404(restaurant_id)
-
-        # Delete all related restaurant_pizzas records
-        RestaurantPizza.query.filter_by(restaurant_id=restaurant_id).delete()
-
-        # Now delete the restaurant
+    def delete(self, id):
+        restaurant = Restaurant.query.get(id)
+        if restaurant is None:
+            return {'error': 'Restaurant not found'}, 404
         db.session.delete(restaurant)
         db.session.commit()
-        
         return '', 204
 
-class PizzaList(Resource):
+class PizzaListResource(Resource):
     def get(self):
         pizzas = Pizza.query.all()
         return jsonify([pizza.to_dict() for pizza in pizzas])
 
+class RestaurantPizzaResource(Resource):
     def post(self):
         data = request.get_json()
-        new_pizza = Pizza(name=data['name'], ingredients=data['ingredients'])
-        db.session.add(new_pizza)
-        db.session.commit()
-        return new_pizza.to_dict(), 201
+        try:
+            new_restaurant_pizza = RestaurantPizza(
+                price=data["price"],
+                pizza_id=data["pizza_id"],
+                restaurant_id=data["restaurant_id"],
+            )
+            db.session.add(new_restaurant_pizza)
+            db.session.commit()
+            return new_restaurant_pizza.to_dict(), 201
+        except ValueError as e:
+            db.session.rollback()
+            response = make_response(
+                jsonify({"errors": ["validation errors"]}),
+                400,
+            )
+            return response
 
-class PizzaById(Resource):
-    def get(self, pizza_id):
-        pizza = Pizza.query.get_or_404(pizza_id)
-        return jsonify(pizza.to_dict())
 
-    def put(self, pizza_id):
-        pizza = Pizza.query.get_or_404(pizza_id)
-        data = request.get_json()
-        pizza.name = data['name']
-        pizza.ingredients = data['ingredients']
-        db.session.commit()
-        return pizza.to_dict()
+api.add_resource(RestaurantListResource, '/restaurants')
+api.add_resource(RestaurantResource, '/restaurants/<int:id>')
+api.add_resource(PizzaListResource, '/pizzas')
+api.add_resource(RestaurantPizzaResource, '/restaurant_pizzas')
 
-    def delete(self, pizza_id):
-        pizza = Pizza.query.get_or_404(pizza_id)
-        db.session.delete(pizza)
-        db.session.commit()
-        return '', 204
-
-class RestaurantPizzaList(Resource):
-    def get(self):
-        restaurant_pizzas = RestaurantPizza.query.all()
-        return jsonify([restaurant_pizza.to_dict() for restaurant_pizza in restaurant_pizzas])
-
-    def post(self):
-        data = request.get_json()
-        new_restaurant_pizza = RestaurantPizza(restaurant_id=data['restaurant_id'], pizza_id=data['pizza_id'], price=data['price'])
-        db.session.add(new_restaurant_pizza)
-        db.session.commit()
-        return new_restaurant_pizza.to_dict(), 201
-
-class RestaurantPizzaById(Resource):
-    def get(self, restaurant_pizza_id):
-        restaurant_pizza = RestaurantPizza.query.get_or_404(restaurant_pizza_id)
-        return jsonify(restaurant_pizza.to_dict())
-
-    def put(self, restaurant_pizza_id):
-        restaurant_pizza = RestaurantPizza.query.get_or_404(restaurant_pizza_id)
-        data = request.get_json()
-        restaurant_pizza.restaurant_id = data['restaurant_id']
-        restaurant_pizza.pizza_id = data['pizza_id']
-        restaurant_pizza.price = data['price']
-        db.session.commit()
-        return restaurant_pizza.to_dict()
-
-    def delete(self, restaurant_pizza_id):
-        restaurant_pizza = RestaurantPizza.query.get_or_404(restaurant_pizza_id)
-        db.session.delete(restaurant_pizza)
-        db.session.commit()
-        return '', 204
-
-# Register the resources with Flask-RESTful
-api.add_resource(RestaurantList, '/restaurants')
-api.add_resource(RestaurantById, '/restaurants/<int:restaurant_id>')
-api.add_resource(PizzaList, '/pizzas')
-api.add_resource(PizzaById, '/pizzas/<int:pizza_id>')
-api.add_resource(RestaurantPizzaList, '/restaurant_pizzas')
-api.add_resource(RestaurantPizzaById, '/restaurant_pizzas/<int:restaurant_pizza_id>')
-
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == "__main__":
+    app.run(port=5555, debug=True)
